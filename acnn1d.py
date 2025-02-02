@@ -4,7 +4,14 @@ cnn + self-attention for 1-d signal data, pytorch version
 Shenda Hong, Jan 2020
 """
 
-import numpy as np
+
+
+import os
+import sys
+# Add the parent directory to the system path to import custom modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import numpy as np # type: ignore
+
 from collections import Counter
 from tqdm import tqdm
 from matplotlib import pyplot as plt
@@ -15,6 +22,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+
 
 class MyDataset(Dataset):
     def __init__(self, data, label):

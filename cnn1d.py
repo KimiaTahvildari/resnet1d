@@ -3,7 +3,7 @@ cnn+rnn for 1-d signal data, pytorch version
  
 Shenda Hong, Jan 2020
 """
-
+pip install numpy
 import numpy as np
 from collections import Counter
 from tqdm import tqdm
