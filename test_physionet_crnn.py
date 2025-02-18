@@ -22,89 +22,99 @@ from torch.utils.data import Dataset, DataLoader
 from tensorboardX import SummaryWriter
 from torchsummaryX import summary
 
-if __name__ == "__main__":
+from torch.utils.tensorboard import SummaryWriter
+import os
 
-    is_debug = False
-    
-    batch_size = 128
-    if is_debug:
-        writer = SummaryWriter('/nethome/shong375/log/crnn1d/challenge2017/debug')
-    else:
-        writer = SummaryWriter('/nethome/shong375/log/crnn1d/challenge2017/new_novote_cleandata_rerunx')
+is_debug = False
+
+debug_path = r"C:\Users\Kimia\Downloads\GIthub exercise\resnet1d\challenge2017\debug"
+normal_path = r"C:\Users\Kimia\Downloads\GIthub exercise\resnet1d\challenge2017\new_novote_cleandata_rerunx"
+
+# Select the correct path
+chosen_path = debug_path if is_debug else normal_path
+
+# Create the directory if it doesn't exist
+os.makedirs(chosen_path, exist_ok=True)
+
+print(f"Log directory created (or already exists): {chosen_path}")
+
+# Initialize TensorBoard writer
+writer = SummaryWriter(chosen_path)
+
 
     # make data
     # preprocess_physionet() ## run this if you have no preprocessed data yet
-    X_train, X_test, Y_train, Y_test, pid_test = read_data_physionet_2_clean(window_size=3000, stride=500)
-    print(X_train.shape, Y_train.shape)
-    dataset = MyDataset(X_train, Y_train)
-    dataset_test = MyDataset(X_test, Y_test)
-    dataloader = DataLoader(dataset, batch_size=batch_size)
-    dataloader_test = DataLoader(dataset_test, batch_size=batch_size, drop_last=False)
+X_train, X_test, Y_train, Y_test, pid_test = read_data_physionet_2_clean(window_size=3000, stride=500)
+print(X_train.shape, Y_train.shape)
+dataset = MyDataset(X_train, Y_train)
+dataset_test = MyDataset(X_test, Y_test)
+dataloader = DataLoader(dataset, batch_size=batch_size)
+dataloader_test = DataLoader(dataset_test, batch_size=batch_size, drop_last=False)
     
     # make model
-    device_str = "cuda"
-    device = torch.device(device_str if torch.cuda.is_available() else "cpu")
-    model = CRNN(
-        in_channels=1, 
-        out_channels=16, 
-        n_len_seg=50, 
-        verbose=False,
-        n_classes=2,
-        device=device)
+device_str = "cuda"
+device = torch.device(device_str if torch.cuda.is_available() else "cpu")
+model = CRNN(
+    in_channels=1, 
+    out_channels=16, 
+    n_len_seg=50, 
+    verbose=False,
+    n_classes=2,
+    device=device)
     
-    summary(model, torch.zeros(1, 1, 3000))
+summary(model, torch.zeros(1, 1, 3000))
 
-    model.to(device)
+model.to(device)
     # train and test
-    model.verbose = False
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
-    loss_func = torch.nn.CrossEntropyLoss()
+model.verbose = False
+optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+loss_func = torch.nn.CrossEntropyLoss()
 
-    n_epoch = 200
-    step = 0
-    prev_f1 = 0
-    for _ in tqdm(range(n_epoch), desc="epoch", leave=False):
+n_epoch = 200
+step = 0
+prev_f1 = 0
+for _ in tqdm(range(n_epoch), desc="epoch", leave=False):
 
-        # train
-        model.train()
-        prog_iter = tqdm(dataloader, desc="Training", leave=False)
-        for batch_idx, batch in enumerate(prog_iter):
+    # train
+    model.train()
+    prog_iter = tqdm(dataloader, desc="Training", leave=False)
+    for batch_idx, batch in enumerate(prog_iter):
 
+        input_x, input_y = tuple(t.to(device) for t in batch)
+        pred = model(input_x)
+        loss = loss_func(pred, input_y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        step += 1
+
+        writer.add_scalar('Loss/train', loss.item(), step)
+
+        if is_debug:
+            break
+        
+    scheduler.step(_)
+                    
+    # test
+    model.eval()
+    prog_iter_test = tqdm(dataloader_test, desc="Testing", leave=False)
+    all_pred_prob = []
+    with torch.no_grad():
+         for batch_idx, batch in enumerate(prog_iter_test):
             input_x, input_y = tuple(t.to(device) for t in batch)
             pred = model(input_x)
-            loss = loss_func(pred, input_y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            step += 1
-
-            writer.add_scalar('Loss/train', loss.item(), step)
-
-            if is_debug:
-                break
-        
-        scheduler.step(_)
-                    
-        # test
-        model.eval()
-        prog_iter_test = tqdm(dataloader_test, desc="Testing", leave=False)
-        all_pred_prob = []
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(prog_iter_test):
-                input_x, input_y = tuple(t.to(device) for t in batch)
-                pred = model(input_x)
-                all_pred_prob.append(pred.cpu().data.numpy())
-        all_pred_prob = np.concatenate(all_pred_prob)
-        all_pred = np.argmax(all_pred_prob, axis=1)
-        ## classification report
-        tmp_report = classification_report(Y_test, all_pred, output_dict=True)
-        print(confusion_matrix(Y_test, all_pred))
-        f1_score = (tmp_report['0']['f1-score'] + tmp_report['1']['f1-score'])/2
-        if f1_score > prev_f1:
-            print(_, f1_score)
-            # torch.save(model, 'models/crnn/crnn_{}_{:.4f}.pt'.format(_, f1_score))
-            prev_f1 = f1_score
-        writer.add_scalar('F1/f1_score', f1_score, _)
-        writer.add_scalar('F1/label_0', tmp_report['0']['f1-score'], _)
-        writer.add_scalar('F1/label_1', tmp_report['1']['f1-score'], _)
+            all_pred_prob.append(pred.cpu().data.numpy())
+    all_pred_prob = np.concatenate(all_pred_prob)
+    all_pred = np.argmax(all_pred_prob, axis=1)
+    ## classification report
+    tmp_report = classification_report(Y_test, all_pred, output_dict=True)
+    print(confusion_matrix(Y_test, all_pred))
+    f1_score = (tmp_report['0']['f1-score'] + tmp_report['1']['f1-score'])/2
+    if f1_score > prev_f1:
+        print(_, f1_score)
+        # torch.save(model, 'models/crnn/crnn_{}_{:.4f}.pt'.format(_, f1_score))
+        prev_f1 = f1_score
+    writer.add_scalar('F1/f1_score', f1_score, _)
+    writer.add_scalar('F1/label_0', tmp_report['0']['f1-score'], _)
+    writer.add_scalar('F1/label_1', tmp_report['1']['f1-score'], _)
