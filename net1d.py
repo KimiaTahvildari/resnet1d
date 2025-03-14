@@ -348,7 +348,8 @@ class Net1D(nn.Module):
         self.stage_list = nn.ModuleList()
         in_channels = self.base_filters
         for i_stage in range(self.n_stages):
-
+            print(out_channels)
+            print(self.groups_width)
             out_channels = self.filter_list[i_stage]
             m_blocks = self.m_blocks_list[i_stage]
             tmp_stage = BasicStage(
@@ -357,7 +358,7 @@ class Net1D(nn.Module):
                 ratio=self.ratio, 
                 kernel_size=self.kernel_size, 
                 stride=self.stride, 
-                groups=out_channels//self.groups_width, 
+                groups = max(1, out_channels // self.groups_width),#groups=out_channels//self.groups_width, 
                 i_stage=i_stage,
                 m_blocks=m_blocks, 
                 use_bn=self.use_bn, 

@@ -52,7 +52,7 @@ if __name__ == "__main__":
         n_classes=2,
         device=device)
     
-    summary(model, torch.zeros(1, 1, 3000))
+    #summary(model, torch.zeros(1, 1, 3000))
 
     model.to(device)
     # train and test
